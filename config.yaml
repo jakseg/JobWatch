@@ -32,12 +32,6 @@ companies:
   - name: "Connecticum"
     url: "https://www.connecticum.de/jobboerse?beschaeftigungsarten%5B%5D=6&fieldsgruppen%5B%5D=23&einsatzort=Berlin%2C+Germany&sprachen%5B%5D=1&sprachen%5B%5D=2&volltext="
 
-  - name: "Indeed"
-    url: "https://de.indeed.com/jobs?q=werkstudent&l=Berlin&from=searchOnHP"
-
-  - name: "StepStone"
-    url: "https://www.stepstone.de/jobs/werkstudent/in-berlin?radius=30&searchOrigin=membersarea"
-
   - name: "Audible"
     url: "https://www.audiblecareers.com/search-jobs/?orgIds=75&alcipm=2921044-2950157-6547383-6547539-2950159"
     keywords:
