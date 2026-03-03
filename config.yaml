@@ -1,0 +1,17 @@
+companies:
+  - name: "SAP"
+    url: "https://jobs.sap.com/search/?q=wirtschaftsinformatik&locationsearch=Deutschland"
+    keywords:
+      - "Wirtschaftsinformatik"
+      - "Business Analyst"
+      - "IT Consulting"
+
+  - name: "Siemens"
+    url: "https://jobs.siemens.com/careers?query=IT&location=Germany"
+    keywords:
+      - "Informatik"
+      - "Digital"
+
+  - name: "Beispiel GmbH"
+    url: "https://beispiel.de/karriere"
+    # Keine Keywords = jede Änderung melden
