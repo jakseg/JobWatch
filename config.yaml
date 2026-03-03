@@ -1,17 +1,60 @@
 companies:
   - name: "SAP"
-    url: "https://jobs.sap.com/search/?q=wirtschaftsinformatik&locationsearch=Deutschland"
+    url: "https://jobs.sap.com/go/SAP-Jobs-in-Berlin/912401/"
     keywords:
-      - "Wirtschaftsinformatik"
-      - "Business Analyst"
-      - "IT Consulting"
+      - "Werkstudent"
+      - "Working Student"
 
   - name: "Siemens"
     url: "https://jobs.siemens.com/careers?query=IT&location=Germany"
     keywords:
-      - "Informatik"
-      - "Digital"
+      - "Werkstudent"
+      - "Working Student"
 
-  - name: "Beispiel GmbH"
-    url: "https://beispiel.de/karriere"
-    # Keine Keywords = jede Änderung melden
+  - name: "Universal Music"
+    url: "https://career.universal-music.de"
+    keywords:
+      - "Werkstudent"
+      - "Working Student"
+
+  - name: "Sony Music"
+    url: "https://www.sonymusic.de/company/career/"
+    keywords:
+      - "Werkstudent"
+      - "Working Student"
+
+  - name: "Warner Music"
+    url: "https://wmg.wd1.myworkdayjobs.com/de-de/WMGGERMANY"
+    keywords:
+      - "Werkstudent"
+      - "Working Student"
+
+  - name: "Connecticum"
+    url: "https://www.connecticum.de/jobboerse?beschaeftigungsarten%5B%5D=6&fieldsgruppen%5B%5D=23&einsatzort=Berlin%2C+Germany&sprachen%5B%5D=1&sprachen%5B%5D=2&volltext="
+
+  - name: "Indeed"
+    url: "https://de.indeed.com/jobs?q=werkstudent&l=Berlin&from=searchOnHP"
+
+  - name: "StepStone"
+    url: "https://www.stepstone.de/jobs/werkstudent/in-berlin?radius=30&searchOrigin=membersarea"
+
+  - name: "Audible"
+    url: "https://www.audiblecareers.com/search-jobs/?orgIds=75&alcipm=2921044-2950157-6547383-6547539-2950159"
+    keywords:
+      - "Werkstudent"
+      - "Working Student"
+
+  - name: "Cherry Ventures"
+    url: "https://talent.cherry.vc/jobs?titlePrefix=working&locations=Berlin"
+
+  - name: "Reply"
+    url: "https://www.reply.com/de/about/careers/de/job-search?country=de&city=berlin&role=student"
+
+  - name: "Capgemini"
+    url: "https://www.capgemini.com/de-de/karriere/jobs/?country_code=de-de&country_name=Germany&experience_level=Studierende%2FAbsolvent*innen&location=Berlin&size=15"
+
+  - name: "Accenture"
+    url: "https://www.accenture.com/de-de/careers/jobsearch?jk=&sb=1&vw=0&is_rj=0&pg=1&ct=berlin"
+    keywords:
+      - "Werkstudent"
+      - "Working Student"
