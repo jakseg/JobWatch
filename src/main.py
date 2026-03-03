@@ -16,6 +16,12 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def _keywords_match(content: str, keywords: list[str]) -> bool:
+    """Check if any keyword appears in the content (case-insensitive substring match)."""
+    content_lower = content.lower()
+    return any(kw.lower() in content_lower for kw in keywords)
+
+
 def main() -> None:
     """Run the full JobWatch pipeline: load → scrape → diff → notify → save."""
     logger.info("JobWatch starting...")
@@ -38,6 +44,10 @@ def main() -> None:
         result = check_diff(name, url, content, state)
 
         if result["changed"]:
+            keywords = company["keywords"]
+            if keywords and not _keywords_match(content, keywords):
+                logger.info("Change detected for %s but no keywords matched. Skipping.", name)
+                continue
             changes.append(result)
 
     check_time = datetime.now(timezone.utc).strftime("%Y-%m-%d um %H:%M UTC")
