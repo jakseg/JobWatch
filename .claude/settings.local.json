@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git log --all --oneline --grep=\"change\\\\|notification\\\\|keyword\" -i)",
+      "Bash(python3 -m json.tool)",
+      "Bash(pip install -r requirements.txt)",
+      "Bash(git checkout data/state.json)",
+      "Bash(TELEGRAM_BOT_TOKEN=test TELEGRAM_CHAT_ID=test python -m src.main)"
+    ]
+  }
+}
