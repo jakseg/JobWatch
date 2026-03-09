@@ -52,3 +52,33 @@ companies:
     keywords:
       - "Werkstudent"
       - "Working Student"
+
+  - name: "Deloitte"
+    url: "https://job.deloitte.com/search?search=&jobtypecluster=4&city=Berlin&results_pp=50"
+    keywords:
+      - "Werkstudent"
+      - "Working Student"
+
+  - name: "KPMG"
+    url: "https://jobs.kpmg.de/?__hstc=85194310.4ae432e9c23ce31479023f9713db005d.1757572107745.1757572107745.1757576800619.2&__hssc=85194310.2.1757576800619&__hsfp=55233996&region=Berlin&regionFilter=Berlin&currentPage=1&pageSize=10&jobLevels=Studierende"
+    keywords:
+      - "Werkstudent"
+      - "Working Student"
+
+  - name: "Shyftplan"
+    url: "https://careers.shyftplan.com/#positions"
+
+  - name: "Merantix Momentum"
+    url: "https://merantix-momentum.jobs.personio.com/?language=en"
+    keywords:
+      - "Werkstudent"
+      - "Working Student"
+
+  - name: "Delivery Hero"
+    url: "https://careers.deliveryhero.com/jobs?options=745%2C242&page=1"
+    keywords:
+      - "Werkstudent"
+      - "Working Student"
+
+  - name: "EY"
+    url: "https://jobsgermany.ey.com/search?location=Berlin&custom_filter_3=Student%3Ain&department=Digitale%20Karriere%20%2F%20MINT&department=Beratung&department=EY-Parthenon%20%28Strategie-%20und%20Transaktionsberatung%29"
