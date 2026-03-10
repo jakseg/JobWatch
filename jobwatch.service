@@ -14,8 +14,9 @@ EnvironmentFile=/opt/jobwatch/.env
 
 NoNewPrivileges=true
 ProtectSystem=strict
-ProtectHome=true
+ProtectHome=tmpfs
 ReadWritePaths=/opt/jobwatch/data
+BindReadOnlyPaths=/home/jobwatch/.cache/ms-playwright
 PrivateTmp=true
 
 [Install]
