@@ -2,7 +2,6 @@
 
 import json
 import os
-import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -18,10 +17,14 @@ def _get_key() -> str:
     return key
 
 
+def _dict_factory(cursor, row):
+    return {col[0]: row[i] for i, col in enumerate(cursor.description)}
+
+
 def get_connection() -> sqlcipher.Connection:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlcipher.connect(str(DB_PATH))
-    conn.row_factory = sqlite3.Row
+    conn.row_factory = _dict_factory
     conn.execute(f"PRAGMA key='{_get_key()}'")
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
@@ -66,7 +69,7 @@ def init_db() -> None:
 
 # --- Users ---
 
-def get_or_create_user(chat_id: int, username: str | None = None) -> sqlite3.Row:
+def get_or_create_user(chat_id: int, username: str | None = None) -> dict:
     conn = get_connection()
     try:
         row = conn.execute(
@@ -100,7 +103,7 @@ def update_notify_time(chat_id: int, hour: int, minute: int) -> None:
         conn.close()
 
 
-def get_all_active_users() -> list[sqlite3.Row]:
+def get_all_active_users() -> list[dict]:
     conn = get_connection()
     try:
         return conn.execute(
@@ -140,7 +143,7 @@ def remove_company(chat_id: int, company_id: int) -> bool:
         conn.close()
 
 
-def list_companies(chat_id: int) -> list[sqlite3.Row]:
+def list_companies(chat_id: int) -> list[dict]:
     conn = get_connection()
     try:
         return conn.execute(
@@ -151,7 +154,7 @@ def list_companies(chat_id: int) -> list[sqlite3.Row]:
         conn.close()
 
 
-def get_companies_for_check(chat_id: int) -> list[sqlite3.Row]:
+def get_companies_for_check(chat_id: int) -> list[dict]:
     conn = get_connection()
     try:
         return conn.execute(
