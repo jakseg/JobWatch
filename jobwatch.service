@@ -1,0 +1,22 @@
+[Unit]
+Description=JobWatch Telegram Bot
+After=network.target
+
+[Service]
+Type=simple
+User=jobwatch
+Group=jobwatch
+WorkingDirectory=/opt/jobwatch
+ExecStart=/opt/jobwatch/.venv/bin/python -m src.bot
+Restart=on-failure
+RestartSec=10
+EnvironmentFile=/opt/jobwatch/.env
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/jobwatch/data
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
