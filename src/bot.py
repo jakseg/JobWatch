@@ -82,7 +82,8 @@ def main() -> None:
         scheduler.start()
 
     async def post_shutdown(application: Application) -> None:
-        scheduler.shutdown()
+        if scheduler.running:
+            scheduler.shutdown()
         await shutdown_browser()
 
     app.post_init = post_init
