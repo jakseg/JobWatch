@@ -2,7 +2,7 @@
 
 import logging
 
-from telegram import Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes, ConversationHandler
 
 from src import database
@@ -12,6 +12,27 @@ logger = logging.getLogger(__name__)
 
 # Conversation states for /add
 NAME, URL, KEYWORDS = range(3)
+
+
+def _main_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("\u2795 Add", callback_data="cmd_add"),
+            InlineKeyboardButton("\u2796 Remove", callback_data="cmd_remove"),
+        ],
+        [
+            InlineKeyboardButton("\U0001f4cb List", callback_data="cmd_list"),
+            InlineKeyboardButton("\U0001f50d Check now", callback_data="cmd_check"),
+        ],
+        [
+            InlineKeyboardButton("\u23f0 Time", callback_data="cmd_time"),
+            InlineKeyboardButton("\u23f8 Pause", callback_data="cmd_pause"),
+        ],
+        [
+            InlineKeyboardButton("\u25b6\ufe0f Resume", callback_data="cmd_resume"),
+            InlineKeyboardButton("\U0001f511 Keywords", callback_data="cmd_keywords"),
+        ],
+    ])
 
 
 # --- /start ---
@@ -26,16 +47,9 @@ async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(
         "\U0001f514 *JobWatch*\n\n"
         "I monitor career pages and notify you about new job postings.\n\n"
-        "*Commands:*\n"
-        "/add — Add a company\n"
-        "/remove — Remove a company\n"
-        "/list — Show all companies\n"
-        "/check — Run a check now\n"
-        "/time HH:MM — Set notification time (UTC)\n"
-        "/pause — Pause a company\n"
-        "/resume — Resume a company\n"
-        "/help — Show help",
+        "What would you like to do?",
         parse_mode="Markdown",
+        reply_markup=_main_keyboard(),
     )
 
 
@@ -43,18 +57,85 @@ async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(
-        "*Commands:*\n"
-        "/add — Add a company\n"
-        "/remove — Remove a company\n"
-        "/list — Show all companies\n"
-        "/check — Run a check now\n"
-        "/time HH:MM — Set notification time (UTC)\n"
-        "/pause — Pause a company\n"
-        "/resume — Resume a company\n"
-        "/keywords — Change keywords for a company\n"
-        "/help — Show this help",
-        parse_mode="Markdown",
+        "What would you like to do?",
+        reply_markup=_main_keyboard(),
     )
+
+
+# --- Inline keyboard callback ---
+
+async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    await query.answer()
+
+    cmd = query.data
+    chat_id = query.message.chat_id
+
+    if cmd == "cmd_add":
+        await query.message.reply_text("What's the company name?")
+        # Store state so the conversation handler can pick it up
+        context.user_data["_awaiting_add"] = True
+    elif cmd == "cmd_list":
+        # Reuse list logic
+        companies = database.list_companies(chat_id)
+        if not companies:
+            await query.message.reply_text("No companies yet. Use /add to add one.")
+        else:
+            lines = []
+            for i, c in enumerate(companies, 1):
+                status = "\u23f8" if c["is_paused"] else "\u2705"
+                keywords = c["keywords"] if c["keywords"] else "all"
+                lines.append(f"{i}. {status} *{c['name']}*\n   Keywords: _{keywords}_")
+            await query.message.reply_text("\n".join(lines), parse_mode="Markdown")
+    elif cmd == "cmd_check":
+        await query.message.reply_text("\u23f3 Running check...")
+        await check_user(chat_id, context.bot)
+        await query.message.reply_text("\u2705 Check complete.")
+    elif cmd == "cmd_remove":
+        companies = database.list_companies(chat_id)
+        if not companies:
+            await query.message.reply_text("No companies found.")
+        else:
+            lines = [f"{i}. {c['name']}" for i, c in enumerate(companies, 1)]
+            await query.message.reply_text(
+                "Which company to remove?\n" + "\n".join(lines) + "\n\nReply: /remove <number>"
+            )
+    elif cmd == "cmd_time":
+        user = database.get_or_create_user(chat_id)
+        await query.message.reply_text(
+            f"Current time: {user['notify_hour']:02d}:{user['notify_minute']:02d} UTC\n"
+            "Change: /time HH:MM"
+        )
+    elif cmd == "cmd_pause":
+        companies = database.list_companies(chat_id)
+        active = [c for c in companies if not c["is_paused"]]
+        if not active:
+            await query.message.reply_text("No active companies to pause.")
+        else:
+            lines = [f"{i}. {c['name']}" for i, c in enumerate(active, 1)]
+            await query.message.reply_text(
+                "Which company to pause?\n" + "\n".join(lines) + "\n\nReply: /pause <number>"
+            )
+    elif cmd == "cmd_resume":
+        companies = database.list_companies(chat_id)
+        paused = [c for c in companies if c["is_paused"]]
+        if not paused:
+            await query.message.reply_text("No paused companies.")
+        else:
+            lines = [f"{i}. {c['name']}" for i, c in enumerate(paused, 1)]
+            await query.message.reply_text(
+                "Which company to resume?\n" + "\n".join(lines) + "\n\nReply: /resume <number>"
+            )
+    elif cmd == "cmd_keywords":
+        companies = database.list_companies(chat_id)
+        if not companies:
+            await query.message.reply_text("No companies found.")
+        else:
+            lines = [f"{i}. {c['name']} — _{c['keywords'] or 'all'}_" for i, c in enumerate(companies, 1)]
+            await query.message.reply_text(
+                "Change keywords:\n" + "\n".join(lines) + "\n\nReply: /keywords <number> <keywords>",
+                parse_mode="Markdown",
+            )
 
 
 # --- /list ---
