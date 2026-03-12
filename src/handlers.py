@@ -6,12 +6,13 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes, ConversationHandler
 
 from src import database
+from src.career_search import is_search_available, search_career_pages
 from src.scheduler import check_user, reschedule_user, schedule_user
 
 logger = logging.getLogger(__name__)
 
 # Conversation states for /add
-NAME, URL, KEYWORDS = range(3)
+NAME, URL, KEYWORDS, LOCATION, URL_SELECT = range(5)
 
 
 def _main_keyboard() -> InlineKeyboardMarkup:
@@ -166,6 +167,14 @@ async def add_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
 async def add_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data["new_name"] = update.message.text.strip()
+    if is_search_available():
+        await update.message.reply_text(
+            "\u26a0\ufe0f _Auto-search is in beta — results may not always be accurate._\n\n"
+            "Location? (e.g. Berlin, Munich)\n"
+            "Or /skip to search without location filter.",
+            parse_mode="Markdown",
+        )
+        return LOCATION
     await update.message.reply_text("Send me the career page URL.")
     return URL
 
@@ -178,6 +187,80 @@ async def add_url(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
     context.user_data["new_url"] = url
     await update.message.reply_text(
+        "Optional: Send keywords separated by commas (e.g. Werkstudent, Working Student).\n"
+        "Or /skip to track all changes."
+    )
+    return KEYWORDS
+
+
+async def add_location(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    text = update.message.text.strip()
+    location = None if text == "/skip" else text
+    name = context.user_data["new_name"]
+
+    await update.message.reply_text("\U0001f50d Searching career pages...")
+    results = await search_career_pages(name, location)
+
+    if not results:
+        await update.message.reply_text(
+            "No career pages found. Please send the URL manually."
+        )
+        return URL
+
+    context.user_data["search_results"] = results
+    buttons = []
+    for i, r in enumerate(results):
+        # Truncate URL for display
+        display = r["url"]
+        if len(display) > 60:
+            display = display[:57] + "..."
+        buttons.append([InlineKeyboardButton(display, callback_data=f"select_url_{i}")])
+    buttons.append([InlineKeyboardButton("\u270f Enter URL manually", callback_data="select_url_manual")])
+
+    await update.message.reply_text(
+        "Select a career page:",
+        reply_markup=InlineKeyboardMarkup(buttons),
+    )
+    return URL_SELECT
+
+
+async def add_url_select(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle manual URL input in URL_SELECT state."""
+    url = update.message.text.strip()
+    if not url.startswith(("http://", "https://")):
+        await update.message.reply_text("That doesn't look like a URL. Please start with http:// or https://")
+        return URL_SELECT
+
+    context.user_data["new_url"] = url
+    context.user_data.pop("search_results", None)
+    await update.message.reply_text(
+        "Optional: Send keywords separated by commas (e.g. Werkstudent, Working Student).\n"
+        "Or /skip to track all changes."
+    )
+    return KEYWORDS
+
+
+async def add_url_select_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle inline button selection for search results."""
+    query = update.callback_query
+    await query.answer()
+
+    if query.data == "select_url_manual":
+        await query.message.reply_text("Send me the career page URL.")
+        return URL_SELECT
+
+    try:
+        idx = int(query.data.replace("select_url_", ""))
+        results = context.user_data.get("search_results", [])
+        result = results[idx]
+    except (ValueError, IndexError):
+        await query.message.reply_text("Invalid selection. Send me the URL manually.")
+        return URL_SELECT
+
+    context.user_data["new_url"] = result["url"]
+    context.user_data.pop("search_results", None)
+    await query.message.reply_text(
+        f"Selected: {result['url']}\n\n"
         "Optional: Send keywords separated by commas (e.g. Werkstudent, Working Student).\n"
         "Or /skip to track all changes."
     )
