@@ -5,6 +5,7 @@ import os
 
 from telegram.ext import (
     Application,
+    CallbackQueryHandler,
     CommandHandler,
     ConversationHandler,
     MessageHandler,
@@ -30,6 +31,7 @@ from src.handlers import (
     add_url,
     add_keywords,
     add_cancel,
+    button_callback,
 )
 from src.scheduler import init_browser, shutdown_browser, load_all_schedules, scheduler
 
@@ -59,6 +61,7 @@ def main() -> None:
     app.add_handler(CommandHandler("pause", pause_cmd))
     app.add_handler(CommandHandler("resume", resume_cmd))
     app.add_handler(CommandHandler("keywords", keywords_cmd))
+    app.add_handler(CallbackQueryHandler(button_callback))
 
     # Multi-step /add conversation
     add_conv = ConversationHandler(
