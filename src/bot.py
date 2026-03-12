@@ -17,6 +17,8 @@ from src.handlers import (
     NAME,
     URL,
     KEYWORDS,
+    LOCATION,
+    URL_SELECT,
     start_cmd,
     help_cmd,
     list_cmd,
@@ -29,6 +31,9 @@ from src.handlers import (
     add_start,
     add_name,
     add_url,
+    add_location,
+    add_url_select,
+    add_url_select_callback,
     add_keywords,
     add_cancel,
     button_callback,
@@ -68,7 +73,15 @@ def main() -> None:
         entry_points=[CommandHandler("add", add_start)],
         states={
             NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_name)],
+            LOCATION: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, add_location),
+                CommandHandler("skip", add_location),
+            ],
             URL: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_url)],
+            URL_SELECT: [
+                CallbackQueryHandler(add_url_select_callback, pattern=r"^select_url_"),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, add_url_select),
+            ],
             KEYWORDS: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, add_keywords),
                 CommandHandler("skip", add_keywords),
