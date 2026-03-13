@@ -237,6 +237,32 @@ def get_stats() -> dict:
 
 # --- State ---
 
+def get_all_jobs(chat_id: int) -> list[dict]:
+    """Return stored lines for all non-paused companies of a user."""
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            "SELECT c.name, c.url, c.keywords, s.lines, s.last_checked "
+            "FROM companies c LEFT JOIN state s ON c.id = s.company_id "
+            "WHERE c.chat_id = ? AND c.is_paused = 0 ORDER BY c.name",
+            (chat_id,),
+        ).fetchall()
+        results = []
+        for row in rows:
+            lines_raw = row["lines"] or "[]"
+            lines = json.loads(lines_raw)
+            results.append({
+                "name": row["name"],
+                "url": row["url"],
+                "keywords": row["keywords"],
+                "lines": lines,
+                "last_checked": row["last_checked"],
+            })
+        return results
+    finally:
+        conn.close()
+
+
 def get_stored_lines(company_id: int) -> set[str] | None:
     conn = get_connection()
     try:

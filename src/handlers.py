@@ -61,6 +61,9 @@ def _main_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton("\U0001f50d Check now", callback_data="cmd_check"),
         ],
         [
+            InlineKeyboardButton("\U0001f4bc All Jobs", callback_data="cmd_jobs"),
+        ],
+        [
             InlineKeyboardButton("\u23f0 Time", callback_data="cmd_time"),
             InlineKeyboardButton("\u23f8 Pause", callback_data="cmd_pause"),
         ],
@@ -149,6 +152,15 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             "\u2705 Check complete.",
             reply_markup=_main_keyboard(),
         )
+    elif cmd == "cmd_jobs":
+        await _show_jobs_picker(chat_id, query.message.reply_text)
+    elif cmd.startswith("jobs_"):
+        try:
+            idx = int(cmd.replace("jobs_", ""))
+        except ValueError:
+            await query.message.reply_text("Invalid selection.")
+            return
+        await _send_company_jobs(chat_id, idx, query.message.reply_text)
     elif cmd == "cmd_remove":
         companies = database.list_companies(chat_id)
         if not companies:
@@ -535,6 +547,115 @@ async def keywords_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         f"\u2705 Keywords for *{_escape_md(company['name'])}*: _{_escape_md(kw_display)}_",
         parse_mode="Markdown",
     )
+
+
+# --- /jobs ---
+
+_JOBS_NOISE = [
+    "Show more", "Load more", "Mehr anzeigen", "Weitere",
+    "Cookie", "Accept", "Decline", "Privacy", "Datenschutz",
+    "Home", "Menu", "Navigation", "Footer", "Header", "Breadcrumb",
+]
+
+MAX_JOBS_MESSAGE = 4096
+MAX_LINES_PER_COMPANY = 15
+
+
+def _filter_job_lines(lines: list[str], keywords: str) -> list[str]:
+    """Filter out noise and optionally highlight keyword matches."""
+    import re
+    filtered = []
+    for line in lines:
+        line_stripped = line.strip()
+        if not line_stripped or len(line_stripped) < 10:
+            continue
+        if any(line_stripped.lower().startswith(n.lower()) for n in _JOBS_NOISE):
+            continue
+        if re.match(r"^\d+\s*/\s*\d+", line_stripped):
+            continue
+        if re.match(r"^\d+$", line_stripped):
+            continue
+        filtered.append(line_stripped)
+    return filtered
+
+
+async def _show_jobs_picker(chat_id: int, reply_func) -> None:
+    """Show inline buttons to pick a company for job listing."""
+    data = database.get_all_jobs(chat_id)
+
+    if not data:
+        await reply_func("No companies tracked yet. Use /add to get started.")
+        return
+
+    companies_with_data = [d for d in data if d["lines"]]
+    if not companies_with_data:
+        await reply_func(
+            "No job data yet. Run /check first to scan your career pages.",
+            reply_markup=_main_keyboard(),
+        )
+        return
+
+    buttons = []
+    for i, company in enumerate(companies_with_data):
+        lines = _filter_job_lines(company["lines"], company["keywords"])
+        count = len(lines)
+        buttons.append([InlineKeyboardButton(
+            f"\U0001f3e2 {company['name']} ({count})",
+            callback_data=f"jobs_{i}",
+        )])
+
+    await reply_func(
+        "\U0001f4bc *Which company's jobs do you want to see?*",
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup(buttons),
+    )
+
+
+async def _send_company_jobs(chat_id: int, company_index: int, reply_func) -> None:
+    """Send all stored job lines for a specific company."""
+    data = database.get_all_jobs(chat_id)
+    companies_with_data = [d for d in data if d["lines"]]
+
+    if company_index >= len(companies_with_data):
+        await reply_func("Company not found.")
+        return
+
+    company = companies_with_data[company_index]
+    name = _escape_md(company["name"])
+    url = company["url"]
+    lines = _filter_job_lines(company["lines"], company["keywords"])
+
+    if not lines:
+        await reply_func(f"No job postings found for *{name}*.", parse_mode="Markdown")
+        return
+
+    messages = []
+    current = f"\U0001f3e2 *{name}* — {len(lines)} postings\n\n"
+
+    for line in lines:
+        truncated = line[:77] + "\u2026" if len(line) > 80 else line
+        entry = f"\u2022 {_escape_md(truncated)}\n"
+
+        if len(current) + len(entry) > MAX_JOBS_MESSAGE - 100:
+            messages.append(current)
+            current = f"\U0001f3e2 *{name}* (cont.)\n\n"
+
+        current += entry
+
+    current += f"\n[\u2192 View page]({url})"
+    messages.append(current)
+
+    for msg in messages:
+        await reply_func(
+            msg,
+            parse_mode="Markdown",
+            disable_web_page_preview=True,
+        )
+
+
+async def jobs_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    chat_id = update.effective_chat.id
+    await _show_jobs_picker(chat_id, update.message.reply_text)
 
 
 # --- /stats (admin only) ---
