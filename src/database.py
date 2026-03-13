@@ -63,6 +63,8 @@ def init_db() -> None:
                 version      INTEGER DEFAULT 2
             );
         """)
+        # Clear any previously stored usernames (privacy)
+        conn.execute("UPDATE users SET username = NULL WHERE username IS NOT NULL")
         conn.commit()
     finally:
         conn.close()
@@ -80,7 +82,7 @@ def get_user(chat_id: int) -> dict | None:
         conn.close()
 
 
-def get_or_create_user(chat_id: int, username: str | None = None) -> dict:
+def get_or_create_user(chat_id: int) -> dict:
     conn = get_connection()
     try:
         row = conn.execute(
@@ -91,8 +93,8 @@ def get_or_create_user(chat_id: int, username: str | None = None) -> dict:
 
         now = datetime.now(timezone.utc).isoformat()
         conn.execute(
-            "INSERT INTO users (chat_id, username, created_at) VALUES (?, ?, ?)",
-            (chat_id, username, now),
+            "INSERT INTO users (chat_id, created_at) VALUES (?, ?)",
+            (chat_id, now),
         )
         conn.commit()
         return conn.execute(

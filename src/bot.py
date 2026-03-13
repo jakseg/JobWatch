@@ -28,7 +28,8 @@ from src.handlers import (
     pause_cmd,
     resume_cmd,
     keywords_cmd,
-    keywords_text_handler,
+    freetext_handler,
+    feedback_cmd,
     add_start,
     add_start_button,
     add_name,
@@ -71,6 +72,7 @@ def main() -> None:
     app.add_handler(CommandHandler("resume", resume_cmd))
     app.add_handler(CommandHandler("keywords", keywords_cmd))
     app.add_handler(CommandHandler("jobs", jobs_cmd))
+    app.add_handler(CommandHandler("feedback", feedback_cmd))
     app.add_handler(CommandHandler("stats", stats_cmd))
     # Multi-step /add conversation (must be before general button handler)
     add_conv = ConversationHandler(
@@ -105,7 +107,7 @@ def main() -> None:
     ))
 
     # Free-text handler for keyword editing (group 1 = lower priority, won't block add conversation)
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, keywords_text_handler), group=1)
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, freetext_handler), group=1)
 
     # Lifecycle hooks
     async def post_init(application: Application) -> None:

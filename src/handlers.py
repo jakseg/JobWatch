@@ -79,6 +79,9 @@ def _main_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton("\u25b6\ufe0f Resume", callback_data="cmd_resume"),
             InlineKeyboardButton("\U0001f511 Keywords", callback_data="cmd_keywords"),
         ],
+        [
+            InlineKeyboardButton("\U0001f4ac Feedback", callback_data="cmd_feedback"),
+        ],
     ])
 
 
@@ -86,11 +89,9 @@ def _main_keyboard() -> InlineKeyboardMarkup:
 
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     chat_id = update.effective_chat.id
-    username = update.effective_user.username
-
     # Check if this is a new user
     is_new = database.get_user(chat_id) is None
-    user = database.get_or_create_user(chat_id, username)
+    user = database.get_or_create_user(chat_id)
 
     schedule_user(chat_id, user["notify_hour"], user["notify_minute"])
 
@@ -109,7 +110,9 @@ async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             "\U0001f50d *Check now* — Run an immediate check\n"
             "\u23f0 *Time* — Change your daily notification time\n"
             "\u23f8 *Pause* / \u25b6\ufe0f *Resume* — Pause or resume tracking\n"
-            "\U0001f511 *Keywords* — Filter postings by keywords\n\n"
+            "\U0001f511 *Keywords* — Filter postings by keywords\n"
+            "\U0001f4bc *All Jobs* — View all current job postings\n"
+            "\U0001f4ac *Feedback* — Send feedback to the developer\n\n"
             "Let's get started\! Tap *Add* to track your first company\\.",
             parse_mode="MarkdownV2",
             reply_markup=_main_keyboard(),
@@ -343,6 +346,15 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         else:
             await query.message.reply_text("No company selected.")
 
+    elif cmd == "cmd_feedback":
+        context.user_data["awaiting_feedback"] = True
+        await query.message.reply_text(
+            "\U0001f4ac *Feedback*\n\n"
+            "Type your feedback, bug report, or feature request below.\n"
+            "It will be sent directly to the developer.",
+            parse_mode="Markdown",
+        )
+
 
 # --- Timezone helpers ---
 
@@ -362,15 +374,45 @@ def _utc_to_berlin(utc_hour: int, utc_minute: int) -> tuple[int, int]:
     return berlin_dt.hour, berlin_dt.minute
 
 
-# --- Keywords text handler (for inline keyword editing) ---
+# --- Free-text handler (feedback + keyword editing) ---
 
-async def keywords_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle free-text keyword input after user selected a company via kw_ button."""
+async def freetext_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle free-text input for feedback or keyword editing."""
+    text = update.message.text.strip()
+    chat_id = update.effective_chat.id
+
+    # --- Feedback mode ---
+    if context.user_data.get("awaiting_feedback"):
+        context.user_data.pop("awaiting_feedback", None)
+        admin_id = os.environ.get("ADMIN_CHAT_ID")
+        if not admin_id:
+            await update.message.reply_text(
+                "\u2705 Thanks for your feedback!",
+                reply_markup=_main_keyboard(),
+            )
+            return
+
+        berlin_time = datetime.now(BERLIN_TZ).strftime("%Y-%m-%d %H:%M")
+        await context.bot.send_message(
+            chat_id=int(admin_id),
+            text=(
+                f"\U0001f4ac *Anonymous Feedback*\n\n"
+                f"Time: {berlin_time} (Berlin)\n\n"
+                f"{_escape_md(text)}"
+            ),
+            parse_mode="Markdown",
+        )
+        await update.message.reply_text(
+            "\u2705 Thanks for your feedback! The developer has been notified.",
+            reply_markup=_main_keyboard(),
+        )
+        return
+
+    # --- Keyword editing mode ---
     company_id = context.user_data.get("kw_company_id")
     if not company_id:
-        return  # Not in keyword editing mode, ignore
+        return  # Not in any editing mode, ignore
 
-    text = update.message.text.strip()
     keywords = [k.strip() for k in text.split(",") if k.strip()]
     company_name = context.user_data.get("kw_company_name", "Unknown")
 
@@ -781,6 +823,18 @@ async def _send_company_jobs(chat_id: int, company_index: int, reply_func) -> No
 async def jobs_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     chat_id = update.effective_chat.id
     await _show_jobs_picker(chat_id, update.message.reply_text)
+
+
+# --- /feedback ---
+
+async def feedback_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    context.user_data["awaiting_feedback"] = True
+    await update.message.reply_text(
+        "\U0001f4ac *Feedback*\n\n"
+        "Type your feedback, bug report, or feature request below.\n"
+        "It will be sent directly to the developer.",
+        parse_mode="Markdown",
+    )
 
 
 # --- /stats (admin only) ---
