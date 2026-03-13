@@ -129,11 +129,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     cmd = query.data
     chat_id = query.message.chat_id
 
-    if cmd == "cmd_add":
-        await query.message.reply_text("What's the company name?")
-        # Store state so the conversation handler can pick it up
-        context.user_data["_awaiting_add"] = True
-    elif cmd == "cmd_list":
+    if cmd == "cmd_list":
         # Reuse list logic
         companies = database.list_companies(chat_id)
         if not companies:
@@ -219,6 +215,13 @@ async def list_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def add_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await update.message.reply_text("What's the company name?")
+    return NAME
+
+
+async def add_start_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    query = update.callback_query
+    await query.answer()
+    await query.message.reply_text("What's the company name?")
     return NAME
 
 
@@ -492,7 +495,7 @@ async def keywords_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         return
 
     if not context.args:
-        lines = [f"{i}. {c['name']} — _{c['keywords'] or 'all'}_" for i, c in enumerate(companies, 1)]
+        lines = [f"{i}. {_escape_md(c['name'])} — _{_escape_md(c['keywords'] or 'all')}_" for i, c in enumerate(companies, 1)]
         await update.message.reply_text(
             "Change keywords:\n" + "\n".join(lines) + "\n\nReply: /keywords <number> <keywords>",
             parse_mode="Markdown",

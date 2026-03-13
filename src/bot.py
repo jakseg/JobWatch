@@ -29,6 +29,7 @@ from src.handlers import (
     resume_cmd,
     keywords_cmd,
     add_start,
+    add_start_button,
     add_name,
     add_url,
     add_location,
@@ -66,11 +67,12 @@ def main() -> None:
     app.add_handler(CommandHandler("pause", pause_cmd))
     app.add_handler(CommandHandler("resume", resume_cmd))
     app.add_handler(CommandHandler("keywords", keywords_cmd))
-    app.add_handler(CallbackQueryHandler(button_callback, pattern=r"^cmd_"))
-
-    # Multi-step /add conversation
+    # Multi-step /add conversation (must be before general button handler)
     add_conv = ConversationHandler(
-        entry_points=[CommandHandler("add", add_start)],
+        entry_points=[
+            CommandHandler("add", add_start),
+            CallbackQueryHandler(add_start_button, pattern=r"^cmd_add$"),
+        ],
         states={
             NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_name)],
             LOCATION: [
@@ -90,6 +92,9 @@ def main() -> None:
         fallbacks=[CommandHandler("cancel", add_cancel)],
     )
     app.add_handler(add_conv)
+
+    # General button handler (after conversation handler so cmd_add is handled there)
+    app.add_handler(CallbackQueryHandler(button_callback, pattern=r"^cmd_"))
 
     # Lifecycle hooks
     async def post_init(application: Application) -> None:
