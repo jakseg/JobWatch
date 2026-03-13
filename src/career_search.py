@@ -1,51 +1,53 @@
-"""Search for company career pages using Google Custom Search API."""
+"""Search for company career pages using DuckDuckGo."""
 
 import asyncio
 import json
 import logging
-import os
 import urllib.request
 import urllib.parse
 
 logger = logging.getLogger(__name__)
 
-GOOGLE_CSE_API_KEY = os.environ.get("GOOGLE_CSE_API_KEY", "")
-GOOGLE_CSE_CX = os.environ.get("GOOGLE_CSE_CX", "")
-
-CSE_ENDPOINT = "https://www.googleapis.com/customsearch/v1"
+DDG_ENDPOINT = "https://html.duckduckgo.com/html/"
 
 
 def is_search_available() -> bool:
-    return bool(GOOGLE_CSE_API_KEY and GOOGLE_CSE_CX)
+    return True
 
 
 def _search_sync(query: str) -> list[dict]:
-    params = urllib.parse.urlencode({
-        "key": GOOGLE_CSE_API_KEY,
-        "cx": GOOGLE_CSE_CX,
-        "q": query,
-        "num": 5,
-    })
-    url = f"{CSE_ENDPOINT}?{params}"
-
-    req = urllib.request.Request(url, headers={"Accept": "application/json"})
+    data = urllib.parse.urlencode({"q": query}).encode()
+    req = urllib.request.Request(
+        DDG_ENDPOINT,
+        data=data,
+        headers={"User-Agent": "Mozilla/5.0"},
+    )
     with urllib.request.urlopen(req, timeout=10) as resp:
-        data = json.loads(resp.read())
+        html = resp.read().decode()
 
     results = []
-    for item in data.get("items", []):
-        results.append({
-            "title": item.get("title", ""),
-            "url": item.get("link", ""),
-            "snippet": item.get("snippet", ""),
-        })
+    # Parse result links from DuckDuckGo HTML response
+    # Each result is in a <a class="result__a" href="...">title</a>
+    import re
+    for match in re.finditer(
+        r'<a\s+rel="nofollow"\s+class="result__a"\s+href="([^"]+)"[^>]*>(.*?)</a>',
+        html,
+    ):
+        raw_url = match.group(1)
+        title = re.sub(r"<[^>]+>", "", match.group(2)).strip()
+
+        # DuckDuckGo wraps URLs in a redirect; extract the actual URL
+        url_match = re.search(r"uddg=([^&]+)", raw_url)
+        url = urllib.parse.unquote(url_match.group(1)) if url_match else raw_url
+
+        results.append({"title": title, "url": url, "snippet": ""})
+        if len(results) >= 5:
+            break
+
     return results
 
 
 async def search_career_pages(company: str, location: str | None = None) -> list[dict]:
-    if not is_search_available():
-        return []
-
     parts = [f'"{company}"', "careers", "jobs"]
     if location:
         parts.append(location)
