@@ -75,17 +75,40 @@ def _main_keyboard() -> InlineKeyboardMarkup:
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     chat_id = update.effective_chat.id
     username = update.effective_user.username
+
+    # Check if this is a new user
+    is_new = database.get_user(chat_id) is None
     user = database.get_or_create_user(chat_id, username)
 
     schedule_user(chat_id, user["notify_hour"], user["notify_minute"])
 
-    await update.message.reply_text(
-        "\U0001f514 *JobWatch*\n\n"
-        "I monitor career pages and notify you about new job postings.\n\n"
-        "What would you like to do?",
-        parse_mode="Markdown",
-        reply_markup=_main_keyboard(),
-    )
+    if is_new:
+        await update.message.reply_text(
+            "\U0001f514 *Welcome to JobWatch\!*\n\n"
+            "I monitor company career pages and notify you when new job postings appear\\.\n\n"
+            "*How it works:*\n"
+            "1\\. Add companies you're interested in\n"
+            "2\\. I'll check their career pages daily\n"
+            "3\\. You get notified about new postings\n\n"
+            "*Buttons explained:*\n"
+            "\u2795 *Add* — Track a new company\n"
+            "\u2796 *Remove* — Stop tracking a company\n"
+            "\U0001f4cb *List* — Show all tracked companies\n"
+            "\U0001f50d *Check now* — Run an immediate check\n"
+            "\u23f0 *Time* — Change your daily notification time\n"
+            "\u23f8 *Pause* / \u25b6\ufe0f *Resume* — Pause or resume tracking\n"
+            "\U0001f511 *Keywords* — Filter postings by keywords\n\n"
+            "Let's get started\! Tap *Add* to track your first company\\.",
+            parse_mode="MarkdownV2",
+            reply_markup=_main_keyboard(),
+        )
+    else:
+        await update.message.reply_text(
+            "\U0001f514 *JobWatch*\n\n"
+            "What would you like to do?",
+            parse_mode="Markdown",
+            reply_markup=_main_keyboard(),
+        )
 
 
 # --- /help ---

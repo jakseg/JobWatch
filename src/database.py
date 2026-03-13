@@ -70,6 +70,16 @@ def init_db() -> None:
 
 # --- Users ---
 
+def get_user(chat_id: int) -> dict | None:
+    conn = get_connection()
+    try:
+        return conn.execute(
+            "SELECT * FROM users WHERE chat_id = ?", (chat_id,)
+        ).fetchone()
+    finally:
+        conn.close()
+
+
 def get_or_create_user(chat_id: int, username: str | None = None) -> dict:
     conn = get_connection()
     try:
