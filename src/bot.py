@@ -66,7 +66,7 @@ def main() -> None:
     app.add_handler(CommandHandler("pause", pause_cmd))
     app.add_handler(CommandHandler("resume", resume_cmd))
     app.add_handler(CommandHandler("keywords", keywords_cmd))
-    app.add_handler(CallbackQueryHandler(button_callback))
+    app.add_handler(CallbackQueryHandler(button_callback, pattern=r"^cmd_"))
 
     # Multi-step /add conversation
     add_conv = ConversationHandler(

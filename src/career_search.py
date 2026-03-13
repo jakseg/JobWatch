@@ -49,7 +49,7 @@ def _search_sync(query: str) -> list[dict]:
 
 
 async def search_career_pages(company: str, location: str | None = None) -> list[dict]:
-    parts = [f'"{company}"', "careers", "jobs"]
+    parts = [company, "career page", "jobs"]
     if location:
         parts.append(location)
     query = " ".join(parts)
