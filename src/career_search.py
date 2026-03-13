@@ -1,8 +1,8 @@
 """Search for company career pages using DuckDuckGo."""
 
 import asyncio
-import json
 import logging
+import re
 import urllib.request
 import urllib.parse
 
@@ -26,9 +26,6 @@ def _search_sync(query: str) -> list[dict]:
         html = resp.read().decode()
 
     results = []
-    # Parse result links from DuckDuckGo HTML response
-    # Each result is in a <a class="result__a" href="...">title</a>
-    import re
     for match in re.finditer(
         r'<a\s+rel="nofollow"\s+class="result__a"\s+href="([^"]+)"[^>]*>(.*?)</a>',
         html,
@@ -36,11 +33,15 @@ def _search_sync(query: str) -> list[dict]:
         raw_url = match.group(1)
         title = re.sub(r"<[^>]+>", "", match.group(2)).strip()
 
-        # DuckDuckGo wraps URLs in a redirect; extract the actual URL
+        # DuckDuckGo may wrap URLs in a redirect or serve them directly
         url_match = re.search(r"uddg=([^&]+)", raw_url)
         url = urllib.parse.unquote(url_match.group(1)) if url_match else raw_url
 
-        results.append({"title": title, "url": url, "snippet": ""})
+        # Skip DuckDuckGo ads (redirect through duckduckgo.com/y.js)
+        if "duckduckgo.com/y.js" in url:
+            continue
+        if url and title:
+            results.append({"title": title, "url": url, "snippet": ""})
         if len(results) >= 5:
             break
 
