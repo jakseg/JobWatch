@@ -23,6 +23,9 @@ env/
 # Database & data
 data/
 
+# Playwright browser cache
+.playwright-browsers/
+
 # OS
 .DS_Store
 Thumbs.db
