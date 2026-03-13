@@ -2,6 +2,7 @@
 
 import ipaddress
 import logging
+import os
 import socket
 from urllib.parse import urlparse
 
@@ -526,5 +527,38 @@ async def keywords_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     kw_display = ", ".join(keywords) if keywords else "all"
     await update.message.reply_text(
         f"\u2705 Keywords for *{_escape_md(company['name'])}*: _{_escape_md(kw_display)}_",
+        parse_mode="Markdown",
+    )
+
+
+# --- /stats (admin only) ---
+
+def _is_admin(chat_id: int) -> bool:
+    admin_id = os.environ.get("ADMIN_CHAT_ID")
+    return admin_id is not None and str(chat_id) == admin_id
+
+
+async def stats_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not _is_admin(update.effective_chat.id):
+        await update.message.reply_text("This command is only available to the bot admin.")
+        return
+
+    s = database.get_stats()
+
+    top = "\n".join(
+        f"   {i}. {_escape_md(c['name'])} ({c['c']} users)"
+        for i, c in enumerate(s["top_companies"], 1)
+    ) or "   No data yet"
+
+    await update.message.reply_text(
+        "\U0001f4ca *JobWatch Stats*\n\n"
+        f"*Users:* {s['total_users']} total, {s['active_users']} active\n\n"
+        f"*Companies:* {s['total_companies']} total\n"
+        f"   \u2705 {s['active_companies']} active\n"
+        f"   \u23f8 {s['paused_companies']} paused\n"
+        f"   \U0001f511 {s['companies_with_keywords']} with keyword filters\n"
+        f"   \U0001f50d {s['checked_companies']} checked at least once\n\n"
+        f"*Avg companies per user:* {s['avg_companies_per_user']}\n\n"
+        f"*Most tracked companies:*\n{top}",
         parse_mode="Markdown",
     )

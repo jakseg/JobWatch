@@ -200,6 +200,41 @@ def update_keywords(company_id: int, keywords: list[str]) -> None:
         conn.close()
 
 
+# --- Stats (anonymized) ---
+
+def get_stats() -> dict:
+    conn = get_connection()
+    try:
+        total_users = conn.execute("SELECT COUNT(*) as c FROM users").fetchone()["c"]
+        active_users = conn.execute("SELECT COUNT(*) as c FROM users WHERE is_active = 1").fetchone()["c"]
+        total_companies = conn.execute("SELECT COUNT(*) as c FROM companies").fetchone()["c"]
+        active_companies = conn.execute("SELECT COUNT(*) as c FROM companies WHERE is_paused = 0").fetchone()["c"]
+        paused_companies = total_companies - active_companies
+        companies_with_keywords = conn.execute(
+            "SELECT COUNT(*) as c FROM companies WHERE keywords != ''"
+        ).fetchone()["c"]
+        checked = conn.execute("SELECT COUNT(*) as c FROM state WHERE last_checked IS NOT NULL").fetchone()["c"]
+        # Top 5 most tracked company names (anonymized — no user data)
+        top_companies = conn.execute(
+            "SELECT name, COUNT(*) as c FROM companies GROUP BY LOWER(name) ORDER BY c DESC LIMIT 5"
+        ).fetchall()
+        # Average companies per user
+        avg_per_user = round(total_companies / total_users, 1) if total_users > 0 else 0
+        return {
+            "total_users": total_users,
+            "active_users": active_users,
+            "total_companies": total_companies,
+            "active_companies": active_companies,
+            "paused_companies": paused_companies,
+            "companies_with_keywords": companies_with_keywords,
+            "checked_companies": checked,
+            "avg_companies_per_user": avg_per_user,
+            "top_companies": top_companies,
+        }
+    finally:
+        conn.close()
+
+
 # --- State ---
 
 def get_stored_lines(company_id: int) -> set[str] | None:

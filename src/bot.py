@@ -38,6 +38,7 @@ from src.handlers import (
     add_keywords,
     add_cancel,
     button_callback,
+    stats_cmd,
 )
 from src.scheduler import init_browser, shutdown_browser, load_all_schedules, scheduler
 
@@ -67,6 +68,7 @@ def main() -> None:
     app.add_handler(CommandHandler("pause", pause_cmd))
     app.add_handler(CommandHandler("resume", resume_cmd))
     app.add_handler(CommandHandler("keywords", keywords_cmd))
+    app.add_handler(CommandHandler("stats", stats_cmd))
     # Multi-step /add conversation (must be before general button handler)
     add_conv = ConversationHandler(
         entry_points=[
