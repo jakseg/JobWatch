@@ -28,6 +28,7 @@ from src.handlers import (
     pause_cmd,
     resume_cmd,
     keywords_cmd,
+    keywords_text_handler,
     add_start,
     add_start_button,
     add_name,
@@ -98,7 +99,13 @@ def main() -> None:
     app.add_handler(add_conv)
 
     # General button handler (after conversation handler so cmd_add is handled there)
-    app.add_handler(CallbackQueryHandler(button_callback, pattern=r"^(cmd_|jobs_)"))
+    app.add_handler(CallbackQueryHandler(
+        button_callback,
+        pattern=r"^(cmd_|jobs_|rm_|pause_|resume_|kw_|time_)",
+    ))
+
+    # Free-text handler for keyword editing (group 1 = lower priority, won't block add conversation)
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, keywords_text_handler), group=1)
 
     # Lifecycle hooks
     async def post_init(application: Application) -> None:

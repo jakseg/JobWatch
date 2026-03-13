@@ -2,6 +2,7 @@
 
 import logging
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -131,7 +132,7 @@ async def check_user(chat_id: int, bot: Bot) -> None:
         await context.close()
 
     if changes:
-        check_time = datetime.now(timezone.utc).strftime("%Y-%m-%d um %H:%M UTC")
+        check_time = datetime.now(ZoneInfo("Europe/Berlin")).strftime("%Y-%m-%d um %H:%M (Berlin)")
         await send_notification(bot, chat_id, changes, check_time)
         logger.info("Sent %d change(s) to user %d.", len(changes), chat_id)
     else:
@@ -152,7 +153,7 @@ def schedule_user(chat_id: int, hour: int, minute: int) -> None:
         args=[chat_id, _bot],
         replace_existing=True,
     )
-    logger.info("Scheduled user %d at %02d:%02d UTC.", chat_id, hour, minute)
+    logger.info("Scheduled user %d at %02d:%02d UTC (stored).", chat_id, hour, minute)
 
 
 def reschedule_user(chat_id: int, hour: int, minute: int) -> None:

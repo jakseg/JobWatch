@@ -3,8 +3,11 @@
 import ipaddress
 import logging
 import os
+import re
 import socket
+from datetime import datetime, timezone, timedelta
 from urllib.parse import urlparse
+from zoneinfo import ZoneInfo
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes, ConversationHandler
@@ -14,6 +17,8 @@ from src.career_search import is_search_available, search_career_pages
 from src.scheduler import check_user, reschedule_user, schedule_user
 
 logger = logging.getLogger(__name__)
+
+BERLIN_TZ = ZoneInfo("Europe/Berlin")
 
 _BLOCKED_NETWORKS = [
     ipaddress.ip_network("127.0.0.0/8"),
@@ -48,6 +53,9 @@ def _escape_md(text: str) -> str:
 
 # Conversation states for /add
 NAME, URL, KEYWORDS, LOCATION, URL_SELECT = range(5)
+
+# Conversation states for keywords edit
+KW_COMPANY, KW_INPUT = range(10, 12)
 
 
 def _main_keyboard() -> InlineKeyboardMarkup:
@@ -134,10 +142,9 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     chat_id = query.message.chat_id
 
     if cmd == "cmd_list":
-        # Reuse list logic
         companies = database.list_companies(chat_id)
         if not companies:
-            await query.message.reply_text("No companies yet. Use /add to add one.")
+            await query.message.reply_text("No companies yet. Tap \u2795 Add to get started.")
         else:
             lines = []
             for i, c in enumerate(companies, 1):
@@ -145,6 +152,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 keywords = c["keywords"] if c["keywords"] else "all"
                 lines.append(f"{i}. {status} *{_escape_md(c['name'])}*\n   Keywords: _{_escape_md(keywords)}_")
             await query.message.reply_text("\n".join(lines), parse_mode="Markdown")
+
     elif cmd == "cmd_check":
         await query.message.reply_text("\u23f3 Running check...")
         await check_user(chat_id, context.bot)
@@ -152,6 +160,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             "\u2705 Check complete.",
             reply_markup=_main_keyboard(),
         )
+
     elif cmd == "cmd_jobs":
         await _show_jobs_picker(chat_id, query.message.reply_text)
     elif cmd.startswith("jobs_"):
@@ -161,51 +170,220 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             await query.message.reply_text("Invalid selection.")
             return
         await _send_company_jobs(chat_id, idx, query.message.reply_text)
+
     elif cmd == "cmd_remove":
         companies = database.list_companies(chat_id)
         if not companies:
             await query.message.reply_text("No companies found.")
         else:
-            lines = [f"{i}. {c['name']}" for i, c in enumerate(companies, 1)]
+            buttons = [
+                [InlineKeyboardButton(f"\u274c {c['name']}", callback_data=f"rm_{c['id']}")]
+                for c in companies
+            ]
             await query.message.reply_text(
-                "Which company to remove?\n" + "\n".join(lines) + "\n\nReply: /remove <number>"
+                "Which company to remove?",
+                reply_markup=InlineKeyboardMarkup(buttons),
             )
+    elif cmd.startswith("rm_"):
+        company_id = int(cmd.replace("rm_", ""))
+        companies = database.list_companies(chat_id)
+        target = next((c for c in companies if c["id"] == company_id), None)
+        if target:
+            database.remove_company(chat_id, company_id)
+            await query.message.reply_text(
+                f"\u274c *{_escape_md(target['name'])}* removed.",
+                parse_mode="Markdown",
+                reply_markup=_main_keyboard(),
+            )
+        else:
+            await query.message.reply_text("Company not found.")
+
     elif cmd == "cmd_time":
         user = database.get_or_create_user(chat_id)
+        berlin_hour, berlin_minute = _utc_to_berlin(user["notify_hour"], user["notify_minute"])
+        buttons = [
+            [
+                InlineKeyboardButton("07:00", callback_data="time_07_00"),
+                InlineKeyboardButton("08:00", callback_data="time_08_00"),
+                InlineKeyboardButton("09:00", callback_data="time_09_00"),
+            ],
+            [
+                InlineKeyboardButton("10:00", callback_data="time_10_00"),
+                InlineKeyboardButton("12:00", callback_data="time_12_00"),
+                InlineKeyboardButton("14:00", callback_data="time_14_00"),
+            ],
+            [
+                InlineKeyboardButton("17:00", callback_data="time_17_00"),
+                InlineKeyboardButton("19:00", callback_data="time_19_00"),
+                InlineKeyboardButton("21:00", callback_data="time_21_00"),
+            ],
+        ]
         await query.message.reply_text(
-            f"Current time: {user['notify_hour']:02d}:{user['notify_minute']:02d} UTC\n"
-            "Change: /time HH:MM"
+            f"Current: *{berlin_hour:02d}:{berlin_minute:02d}* (Berlin)\n\n"
+            "Pick a new notification time:",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup(buttons),
         )
+    elif cmd.startswith("time_"):
+        parts = cmd.replace("time_", "").split("_")
+        berlin_h, berlin_m = int(parts[0]), int(parts[1])
+        utc_h, utc_m = _berlin_to_utc(berlin_h, berlin_m)
+        database.update_notify_time(chat_id, utc_h, utc_m)
+        reschedule_user(chat_id, utc_h, utc_m)
+        await query.message.reply_text(
+            f"\u2705 Notification time set to *{berlin_h:02d}:{berlin_m:02d}* (Berlin).",
+            parse_mode="Markdown",
+            reply_markup=_main_keyboard(),
+        )
+
     elif cmd == "cmd_pause":
         companies = database.list_companies(chat_id)
         active = [c for c in companies if not c["is_paused"]]
         if not active:
             await query.message.reply_text("No active companies to pause.")
         else:
-            lines = [f"{i}. {c['name']}" for i, c in enumerate(active, 1)]
+            buttons = [
+                [InlineKeyboardButton(f"\u23f8 {c['name']}", callback_data=f"pause_{c['id']}")]
+                for c in active
+            ]
             await query.message.reply_text(
-                "Which company to pause?\n" + "\n".join(lines) + "\n\nReply: /pause <number>"
+                "Which company to pause?",
+                reply_markup=InlineKeyboardMarkup(buttons),
             )
+    elif cmd.startswith("pause_"):
+        company_id = int(cmd.replace("pause_", ""))
+        companies = database.list_companies(chat_id)
+        target = next((c for c in companies if c["id"] == company_id), None)
+        if target:
+            database.set_company_paused(company_id, True)
+            await query.message.reply_text(
+                f"\u23f8 *{_escape_md(target['name'])}* paused.",
+                parse_mode="Markdown",
+                reply_markup=_main_keyboard(),
+            )
+        else:
+            await query.message.reply_text("Company not found.")
+
     elif cmd == "cmd_resume":
         companies = database.list_companies(chat_id)
         paused = [c for c in companies if c["is_paused"]]
         if not paused:
             await query.message.reply_text("No paused companies.")
         else:
-            lines = [f"{i}. {c['name']}" for i, c in enumerate(paused, 1)]
+            buttons = [
+                [InlineKeyboardButton(f"\u25b6\ufe0f {c['name']}", callback_data=f"resume_{c['id']}")]
+                for c in paused
+            ]
             await query.message.reply_text(
-                "Which company to resume?\n" + "\n".join(lines) + "\n\nReply: /resume <number>"
+                "Which company to resume?",
+                reply_markup=InlineKeyboardMarkup(buttons),
             )
+    elif cmd.startswith("resume_"):
+        company_id = int(cmd.replace("resume_", ""))
+        companies = database.list_companies(chat_id)
+        target = next((c for c in companies if c["id"] == company_id), None)
+        if target:
+            database.set_company_paused(company_id, False)
+            await query.message.reply_text(
+                f"\u25b6\ufe0f *{_escape_md(target['name'])}* resumed.",
+                parse_mode="Markdown",
+                reply_markup=_main_keyboard(),
+            )
+        else:
+            await query.message.reply_text("Company not found.")
+
     elif cmd == "cmd_keywords":
         companies = database.list_companies(chat_id)
         if not companies:
             await query.message.reply_text("No companies found.")
         else:
-            lines = [f"{i}. {_escape_md(c['name'])} — _{_escape_md(c['keywords'] or 'all')}_" for i, c in enumerate(companies, 1)]
+            buttons = [
+                [InlineKeyboardButton(
+                    f"\U0001f511 {c['name']} — {c['keywords'] or 'all'}",
+                    callback_data=f"kw_{c['id']}",
+                )]
+                for c in companies
+            ]
             await query.message.reply_text(
-                "Change keywords:\n" + "\n".join(lines) + "\n\nReply: /keywords <number> <keywords>",
-                parse_mode="Markdown",
+                "Which company's keywords to change?",
+                reply_markup=InlineKeyboardMarkup(buttons),
             )
+    elif cmd.startswith("kw_"):
+        company_id = int(cmd.replace("kw_", ""))
+        companies = database.list_companies(chat_id)
+        target = next((c for c in companies if c["id"] == company_id), None)
+        if target:
+            context.user_data["kw_company_id"] = company_id
+            context.user_data["kw_company_name"] = target["name"]
+            current_kw = target["keywords"] or "all"
+            buttons = [[InlineKeyboardButton("\U0001f5d1 Clear keywords (track all)", callback_data="kw_clear")]]
+            await query.message.reply_text(
+                f"\U0001f511 *{_escape_md(target['name'])}*\n"
+                f"Current keywords: _{_escape_md(current_kw)}_\n\n"
+                "Send new keywords separated by commas\n"
+                "(e.g. Werkstudent, Working Student)\n\n"
+                "Or clear to track all changes:",
+                parse_mode="Markdown",
+                reply_markup=InlineKeyboardMarkup(buttons),
+            )
+        else:
+            await query.message.reply_text("Company not found.")
+    elif cmd == "kw_clear":
+        company_id = context.user_data.get("kw_company_id")
+        company_name = context.user_data.get("kw_company_name", "Unknown")
+        if company_id:
+            database.update_keywords(company_id, [])
+            context.user_data.pop("kw_company_id", None)
+            context.user_data.pop("kw_company_name", None)
+            await query.message.reply_text(
+                f"\u2705 Keywords cleared for *{_escape_md(company_name)}* — tracking all changes.",
+                parse_mode="Markdown",
+                reply_markup=_main_keyboard(),
+            )
+        else:
+            await query.message.reply_text("No company selected.")
+
+
+# --- Timezone helpers ---
+
+def _berlin_to_utc(berlin_hour: int, berlin_minute: int) -> tuple[int, int]:
+    """Convert Berlin time to UTC hour/minute."""
+    now = datetime.now(BERLIN_TZ)
+    berlin_dt = now.replace(hour=berlin_hour, minute=berlin_minute, second=0, microsecond=0)
+    utc_dt = berlin_dt.astimezone(timezone.utc)
+    return utc_dt.hour, utc_dt.minute
+
+
+def _utc_to_berlin(utc_hour: int, utc_minute: int) -> tuple[int, int]:
+    """Convert UTC hour/minute to Berlin time."""
+    now = datetime.now(timezone.utc)
+    utc_dt = now.replace(hour=utc_hour, minute=utc_minute, second=0, microsecond=0)
+    berlin_dt = utc_dt.astimezone(BERLIN_TZ)
+    return berlin_dt.hour, berlin_dt.minute
+
+
+# --- Keywords text handler (for inline keyword editing) ---
+
+async def keywords_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle free-text keyword input after user selected a company via kw_ button."""
+    company_id = context.user_data.get("kw_company_id")
+    if not company_id:
+        return  # Not in keyword editing mode, ignore
+
+    text = update.message.text.strip()
+    keywords = [k.strip() for k in text.split(",") if k.strip()]
+    company_name = context.user_data.get("kw_company_name", "Unknown")
+
+    database.update_keywords(company_id, keywords)
+    context.user_data.pop("kw_company_id", None)
+    context.user_data.pop("kw_company_name", None)
+
+    kw_display = ", ".join(keywords) if keywords else "all"
+    await update.message.reply_text(
+        f"\u2705 Keywords for *{_escape_md(company_name)}*: _{_escape_md(kw_display)}_",
+        parse_mode="Markdown",
+        reply_markup=_main_keyboard(),
+    )
 
 
 # --- /list ---
@@ -389,22 +567,14 @@ async def remove_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         await update.message.reply_text("No companies found.")
         return
 
-    if not context.args:
-        lines = [f"{i}. {c['name']}" for i, c in enumerate(companies, 1)]
-        await update.message.reply_text(
-            "Which company to remove?\n" + "\n".join(lines) + "\n\nReply: /remove <number>"
-        )
-        return
-
-    try:
-        idx = int(context.args[0]) - 1
-        company = companies[idx]
-    except (ValueError, IndexError):
-        await update.message.reply_text("Invalid number.")
-        return
-
-    database.remove_company(chat_id, company["id"])
-    await update.message.reply_text(f"\u274c *{_escape_md(company['name'])}* removed.", parse_mode="Markdown")
+    buttons = [
+        [InlineKeyboardButton(f"\u274c {c['name']}", callback_data=f"rm_{c['id']}")]
+        for c in companies
+    ]
+    await update.message.reply_text(
+        "Which company to remove?",
+        reply_markup=InlineKeyboardMarkup(buttons),
+    )
 
 
 # --- /check ---
@@ -424,25 +594,30 @@ async def check_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def time_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not context.args:
         user = database.get_or_create_user(update.effective_chat.id)
+        berlin_h, berlin_m = _utc_to_berlin(user["notify_hour"], user["notify_minute"])
         await update.message.reply_text(
-            f"Current time: {user['notify_hour']:02d}:{user['notify_minute']:02d} UTC\n"
-            "Change: /time HH:MM"
+            f"Current time: {berlin_h:02d}:{berlin_m:02d} (Berlin)\n"
+            "Change: /time HH:MM (Berlin time)"
         )
         return
 
     try:
         parts = context.args[0].split(":")
-        hour, minute = int(parts[0]), int(parts[1])
-        if not (0 <= hour <= 23 and 0 <= minute <= 59):
+        berlin_hour, berlin_minute = int(parts[0]), int(parts[1])
+        if not (0 <= berlin_hour <= 23 and 0 <= berlin_minute <= 59):
             raise ValueError
     except (ValueError, IndexError):
         await update.message.reply_text("Format: /time HH:MM (e.g. /time 09:30)")
         return
 
     chat_id = update.effective_chat.id
-    database.update_notify_time(chat_id, hour, minute)
-    reschedule_user(chat_id, hour, minute)
-    await update.message.reply_text(f"\u2705 Notification time set to {hour:02d}:{minute:02d} UTC.")
+    utc_h, utc_m = _berlin_to_utc(berlin_hour, berlin_minute)
+    database.update_notify_time(chat_id, utc_h, utc_m)
+    reschedule_user(chat_id, utc_h, utc_m)
+    await update.message.reply_text(
+        f"\u2705 Notification time set to {berlin_hour:02d}:{berlin_minute:02d} (Berlin).",
+        reply_markup=_main_keyboard(),
+    )
 
 
 # --- /pause ---
@@ -456,22 +631,14 @@ async def pause_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.message.reply_text("No active companies to pause.")
         return
 
-    if not context.args:
-        lines = [f"{i}. {c['name']}" for i, c in enumerate(active, 1)]
-        await update.message.reply_text(
-            "Which company to pause?\n" + "\n".join(lines) + "\n\nReply: /pause <number>"
-        )
-        return
-
-    try:
-        idx = int(context.args[0]) - 1
-        company = active[idx]
-    except (ValueError, IndexError):
-        await update.message.reply_text("Invalid number.")
-        return
-
-    database.set_company_paused(company["id"], True)
-    await update.message.reply_text(f"\u23f8 *{_escape_md(company['name'])}* paused.", parse_mode="Markdown")
+    buttons = [
+        [InlineKeyboardButton(f"\u23f8 {c['name']}", callback_data=f"pause_{c['id']}")]
+        for c in active
+    ]
+    await update.message.reply_text(
+        "Which company to pause?",
+        reply_markup=InlineKeyboardMarkup(buttons),
+    )
 
 
 # --- /resume ---
@@ -485,22 +652,14 @@ async def resume_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         await update.message.reply_text("No paused companies.")
         return
 
-    if not context.args:
-        lines = [f"{i}. {c['name']}" for i, c in enumerate(paused, 1)]
-        await update.message.reply_text(
-            "Which company to resume?\n" + "\n".join(lines) + "\n\nReply: /resume <number>"
-        )
-        return
-
-    try:
-        idx = int(context.args[0]) - 1
-        company = paused[idx]
-    except (ValueError, IndexError):
-        await update.message.reply_text("Invalid number.")
-        return
-
-    database.set_company_paused(company["id"], False)
-    await update.message.reply_text(f"\u25b6 *{_escape_md(company['name'])}* resumed.", parse_mode="Markdown")
+    buttons = [
+        [InlineKeyboardButton(f"\u25b6\ufe0f {c['name']}", callback_data=f"resume_{c['id']}")]
+        for c in paused
+    ]
+    await update.message.reply_text(
+        "Which company to resume?",
+        reply_markup=InlineKeyboardMarkup(buttons),
+    )
 
 
 # --- /keywords ---
@@ -513,39 +672,16 @@ async def keywords_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         await update.message.reply_text("No companies found.")
         return
 
-    if not context.args:
-        lines = [f"{i}. {_escape_md(c['name'])} — _{_escape_md(c['keywords'] or 'all')}_" for i, c in enumerate(companies, 1)]
-        await update.message.reply_text(
-            "Change keywords:\n" + "\n".join(lines) + "\n\nReply: /keywords <number> <keywords>",
-            parse_mode="Markdown",
-        )
-        return
-
-    try:
-        idx = int(context.args[0]) - 1
-        company = companies[idx]
-    except (ValueError, IndexError):
-        await update.message.reply_text("Invalid number.")
-        return
-
-    if len(context.args) < 2:
-        kw = company["keywords"] or "all"
-        await update.message.reply_text(
-            f"*{_escape_md(company['name'])}*: _{_escape_md(kw)}_\n\n"
-            f"Change: /keywords {idx + 1} Werkstudent, Working Student\n"
-            f"Clear: /keywords {idx + 1} all",
-            parse_mode="Markdown",
-        )
-        return
-
-    raw = " ".join(context.args[1:])
-    keywords = [] if raw.lower() == "all" else [k.strip() for k in raw.split(",") if k.strip()]
-
-    database.update_keywords(company["id"], keywords)
-    kw_display = ", ".join(keywords) if keywords else "all"
+    buttons = [
+        [InlineKeyboardButton(
+            f"\U0001f511 {c['name']} — {c['keywords'] or 'all'}",
+            callback_data=f"kw_{c['id']}",
+        )]
+        for c in companies
+    ]
     await update.message.reply_text(
-        f"\u2705 Keywords for *{_escape_md(company['name'])}*: _{_escape_md(kw_display)}_",
-        parse_mode="Markdown",
+        "Which company's keywords to change?",
+        reply_markup=InlineKeyboardMarkup(buttons),
     )
 
 
@@ -584,25 +720,15 @@ async def _show_jobs_picker(chat_id: int, reply_func) -> None:
     data = database.get_all_jobs(chat_id)
 
     if not data:
-        await reply_func("No companies tracked yet. Use /add to get started.")
-        return
-
-    companies_with_data = [d for d in data if d["lines"]]
-    if not companies_with_data:
-        await reply_func(
-            "No job data yet. Run /check first to scan your career pages.",
-            reply_markup=_main_keyboard(),
-        )
+        await reply_func("No companies tracked yet. Tap \u2795 Add to get started.")
         return
 
     buttons = []
-    for i, company in enumerate(companies_with_data):
-        lines = _filter_job_lines(company["lines"], company["keywords"])
+    for i, company in enumerate(data):
+        lines = _filter_job_lines(company["lines"], company["keywords"]) if company["lines"] else []
         count = len(lines)
-        buttons.append([InlineKeyboardButton(
-            f"\U0001f3e2 {company['name']} ({count})",
-            callback_data=f"jobs_{i}",
-        )])
+        label = f"\U0001f3e2 {company['name']} ({count})" if count else f"\U0001f3e2 {company['name']} (no data)"
+        buttons.append([InlineKeyboardButton(label, callback_data=f"jobs_{i}")])
 
     await reply_func(
         "\U0001f4bc *Which company's jobs do you want to see?*",
@@ -614,13 +740,12 @@ async def _show_jobs_picker(chat_id: int, reply_func) -> None:
 async def _send_company_jobs(chat_id: int, company_index: int, reply_func) -> None:
     """Send all stored job lines for a specific company."""
     data = database.get_all_jobs(chat_id)
-    companies_with_data = [d for d in data if d["lines"]]
 
-    if company_index >= len(companies_with_data):
+    if company_index >= len(data):
         await reply_func("Company not found.")
         return
 
-    company = companies_with_data[company_index]
+    company = data[company_index]
     name = _escape_md(company["name"])
     url = company["url"]
     lines = _filter_job_lines(company["lines"], company["keywords"])
