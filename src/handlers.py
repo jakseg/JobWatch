@@ -1,6 +1,9 @@
 """Telegram command handlers for JobWatch."""
 
+import ipaddress
 import logging
+import socket
+from urllib.parse import urlparse
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes, ConversationHandler
@@ -10,6 +13,37 @@ from src.career_search import is_search_available, search_career_pages
 from src.scheduler import check_user, reschedule_user, schedule_user
 
 logger = logging.getLogger(__name__)
+
+_BLOCKED_NETWORKS = [
+    ipaddress.ip_network("127.0.0.0/8"),
+    ipaddress.ip_network("10.0.0.0/8"),
+    ipaddress.ip_network("172.16.0.0/12"),
+    ipaddress.ip_network("192.168.0.0/16"),
+    ipaddress.ip_network("169.254.0.0/16"),
+    ipaddress.ip_network("::1/128"),
+    ipaddress.ip_network("fc00::/7"),
+    ipaddress.ip_network("fe80::/10"),
+]
+
+
+def _is_safe_url(url: str) -> bool:
+    try:
+        hostname = urlparse(url).hostname
+        if not hostname:
+            return False
+        for addr_info in socket.getaddrinfo(hostname, None):
+            ip = ipaddress.ip_address(addr_info[4][0])
+            if any(ip in net for net in _BLOCKED_NETWORKS):
+                return False
+    except (socket.gaierror, ValueError):
+        return False
+    return True
+
+
+def _escape_md(text: str) -> str:
+    for char in ("_", "*", "`", "["):
+        text = text.replace(char, f"\\{char}")
+    return text
 
 # Conversation states for /add
 NAME, URL, KEYWORDS, LOCATION, URL_SELECT = range(5)
@@ -86,7 +120,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             for i, c in enumerate(companies, 1):
                 status = "\u23f8" if c["is_paused"] else "\u2705"
                 keywords = c["keywords"] if c["keywords"] else "all"
-                lines.append(f"{i}. {status} *{c['name']}*\n   Keywords: _{keywords}_")
+                lines.append(f"{i}. {status} *{_escape_md(c['name'])}*\n   Keywords: _{_escape_md(keywords)}_")
             await query.message.reply_text("\n".join(lines), parse_mode="Markdown")
     elif cmd == "cmd_check":
         await query.message.reply_text("\u23f3 Running check...")
@@ -132,7 +166,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         if not companies:
             await query.message.reply_text("No companies found.")
         else:
-            lines = [f"{i}. {c['name']} — _{c['keywords'] or 'all'}_" for i, c in enumerate(companies, 1)]
+            lines = [f"{i}. {_escape_md(c['name'])} — _{_escape_md(c['keywords'] or 'all')}_" for i, c in enumerate(companies, 1)]
             await query.message.reply_text(
                 "Change keywords:\n" + "\n".join(lines) + "\n\nReply: /keywords <number> <keywords>",
                 parse_mode="Markdown",
@@ -153,7 +187,7 @@ async def list_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     for i, c in enumerate(companies, 1):
         status = "\u23f8" if c["is_paused"] else "\u2705"
         keywords = c["keywords"] if c["keywords"] else "all"
-        lines.append(f"{i}. {status} *{c['name']}*\n   Keywords: _{keywords}_")
+        lines.append(f"{i}. {status} *{_escape_md(c['name'])}*\n   Keywords: _{_escape_md(keywords)}_")
 
     await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
 
@@ -183,6 +217,9 @@ async def add_url(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     url = update.message.text.strip()
     if not url.startswith(("http://", "https://")):
         await update.message.reply_text("That doesn't look like a URL. Please start with http:// or https://")
+        return URL
+    if not _is_safe_url(url):
+        await update.message.reply_text("This URL points to a private/internal address and is not allowed.")
         return URL
 
     context.user_data["new_url"] = url
@@ -229,6 +266,9 @@ async def add_url_select(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     url = update.message.text.strip()
     if not url.startswith(("http://", "https://")):
         await update.message.reply_text("That doesn't look like a URL. Please start with http:// or https://")
+        return URL_SELECT
+    if not _is_safe_url(url):
+        await update.message.reply_text("This URL points to a private/internal address and is not allowed.")
         return URL_SELECT
 
     context.user_data["new_url"] = url
@@ -283,7 +323,7 @@ async def add_keywords(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
 
     kw_display = ", ".join(keywords) if keywords else "all"
     await update.message.reply_text(
-        f"\u2705 *{name}* added.\nKeywords: _{kw_display}_\n\n"
+        f"\u2705 *{_escape_md(name)}* added.\nKeywords: _{_escape_md(kw_display)}_\n\n"
         "The first check will establish a baseline (no notification).",
         parse_mode="Markdown",
     )
@@ -322,7 +362,7 @@ async def remove_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         return
 
     database.remove_company(chat_id, company["id"])
-    await update.message.reply_text(f"\u274c *{company['name']}* removed.", parse_mode="Markdown")
+    await update.message.reply_text(f"\u274c *{_escape_md(company['name'])}* removed.", parse_mode="Markdown")
 
 
 # --- /check ---
@@ -386,7 +426,7 @@ async def pause_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
 
     database.set_company_paused(company["id"], True)
-    await update.message.reply_text(f"\u23f8 *{company['name']}* paused.", parse_mode="Markdown")
+    await update.message.reply_text(f"\u23f8 *{_escape_md(company['name'])}* paused.", parse_mode="Markdown")
 
 
 # --- /resume ---
@@ -415,7 +455,7 @@ async def resume_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         return
 
     database.set_company_paused(company["id"], False)
-    await update.message.reply_text(f"\u25b6 *{company['name']}* resumed.", parse_mode="Markdown")
+    await update.message.reply_text(f"\u25b6 *{_escape_md(company['name'])}* resumed.", parse_mode="Markdown")
 
 
 # --- /keywords ---
@@ -446,7 +486,7 @@ async def keywords_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if len(context.args) < 2:
         kw = company["keywords"] or "all"
         await update.message.reply_text(
-            f"*{company['name']}*: _{kw}_\n\n"
+            f"*{_escape_md(company['name'])}*: _{_escape_md(kw)}_\n\n"
             f"Change: /keywords {idx + 1} Werkstudent, Working Student\n"
             f"Clear: /keywords {idx + 1} all",
             parse_mode="Markdown",
@@ -459,6 +499,6 @@ async def keywords_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     database.update_keywords(company["id"], keywords)
     kw_display = ", ".join(keywords) if keywords else "all"
     await update.message.reply_text(
-        f"\u2705 Keywords for *{company['name']}*: _{kw_display}_",
+        f"\u2705 Keywords for *{_escape_md(company['name'])}*: _{_escape_md(kw_display)}_",
         parse_mode="Markdown",
     )

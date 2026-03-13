@@ -25,7 +25,8 @@ def get_connection() -> sqlcipher.Connection:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlcipher.connect(str(DB_PATH))
     conn.row_factory = _dict_factory
-    conn.execute(f"PRAGMA key='{_get_key()}'")
+    key = _get_key().replace("'", "''")
+    conn.execute(f"PRAGMA key='{key}'")
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
     return conn

@@ -20,10 +20,8 @@ env/
 *.swp
 *.swo
 
-# Database
-data/jobwatch.db
-data/jobwatch.db-wal
-data/jobwatch.db-shm
+# Database & data
+data/
 
 # OS
 .DS_Store
