@@ -1,6 +1,7 @@
 """Send Telegram notifications via python-telegram-bot."""
 
 import logging
+import re
 
 from telegram import Bot
 
@@ -9,6 +10,19 @@ logger = logging.getLogger(__name__)
 MAX_MESSAGE_LENGTH = 4096
 MAX_LINES_PER_COMPANY = 10
 MAX_LINE_DISPLAY_LENGTH = 80
+
+# Lines that are likely noise (nav elements, counters, locations-only)
+_NOISE_PATTERNS = [
+    re.compile(r"^\d+\s*/\s*\d+\s*(Jobs?|Stellen?|Results?)", re.IGNORECASE),  # "27 / 461 Jobs"
+    re.compile(r"^(Show more|Load more|Mehr anzeigen|Weitere)", re.IGNORECASE),
+    re.compile(r"^(Cookie|Accept|Decline|Privacy|Datenschutz)", re.IGNORECASE),
+    re.compile(r"^(Home|Menu|Navigation|Footer|Header|Breadcrumb)", re.IGNORECASE),
+    re.compile(r"^\d+$"),  # Just a number
+]
+
+
+def _is_noise(line: str) -> bool:
+    return any(p.search(line) for p in _NOISE_PATTERNS)
 
 
 def _escape_markdown(text: str) -> str:
@@ -26,9 +40,13 @@ def _truncate_line(line: str, max_length: int = MAX_LINE_DISPLAY_LENGTH) -> str:
 def _format_company_block(change: dict) -> str:
     name = _escape_markdown(change["company_name"])
     url = change["url"]
-    new_lines = change["new_lines"]
+    new_lines = [l for l in change["new_lines"] if not _is_noise(l)]
 
-    block_lines = [f"*{name}*"]
+    if not new_lines:
+        new_lines = change["new_lines"]
+
+    count = len(new_lines)
+    block_lines = [f"\U0001f3e2 *{name}* — {count} new"]
 
     display_lines = new_lines[:MAX_LINES_PER_COMPANY]
     for line in display_lines:
@@ -39,7 +57,7 @@ def _format_company_block(change: dict) -> str:
     if remaining > 0:
         block_lines.append(f"  _\\+{remaining} more_")
 
-    block_lines.append(f"[\u2192 View page]({url})")
+    block_lines.append(f"  [\u2192 View page]({url})")
 
     return "\n".join(block_lines)
 
@@ -52,21 +70,30 @@ async def send_notification(bot: Bot, chat_id: int, changes: list[dict], check_t
     if not changes:
         return
 
-    header = "\U0001f514 *JobWatch \u2014 New Job Postings*\n"
-    footer = f"\n_Checked at {_escape_markdown(check_time)}_"
+    total_new = sum(len(c["new_lines"]) for c in changes)
+    company_count = len(changes)
 
+    header = (
+        f"\U0001f514 *JobWatch — New Job Postings*\n"
+        f"_{company_count} {'company' if company_count == 1 else 'companies'}, "
+        f"{total_new} new {'posting' if total_new == 1 else 'postings'}_\n"
+    )
+    footer = f"\n\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n_Checked {_escape_markdown(check_time)}_"
+
+    separator = "\n\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n"
     company_blocks = [_format_company_block(c) for c in changes]
 
     messages: list[str] = []
     current_message = header
 
-    for block in company_blocks:
-        test_message = current_message + "\n" + block + footer
+    for i, block in enumerate(company_blocks):
+        prefix = separator if i > 0 else "\n"
+        test_message = current_message + prefix + block + footer
         if len(test_message) > MAX_MESSAGE_LENGTH and current_message != header:
             messages.append(current_message + footer)
             current_message = header + "\n" + block
         else:
-            current_message += "\n" + block
+            current_message += prefix + block
 
     messages.append(current_message + footer)
 

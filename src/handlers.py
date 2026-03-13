@@ -145,7 +145,10 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     elif cmd == "cmd_check":
         await query.message.reply_text("\u23f3 Running check...")
         await check_user(chat_id, context.bot)
-        await query.message.reply_text("\u2705 Check complete.")
+        await query.message.reply_text(
+            "\u2705 Check complete.",
+            reply_markup=_main_keyboard(),
+        )
     elif cmd == "cmd_remove":
         companies = database.list_companies(chat_id)
         if not companies:
@@ -398,7 +401,10 @@ async def check_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     chat_id = update.effective_chat.id
     await update.message.reply_text("\u23f3 Running check...")
     await check_user(chat_id, context.bot)
-    await update.message.reply_text("\u2705 Check complete.")
+    await update.message.reply_text(
+        "\u2705 Check complete.",
+        reply_markup=_main_keyboard(),
+    )
 
 
 # --- /time ---
