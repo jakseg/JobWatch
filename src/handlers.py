@@ -81,6 +81,7 @@ def _main_keyboard() -> InlineKeyboardMarkup:
         ],
         [
             InlineKeyboardButton("\U0001f4ac Feedback", callback_data="cmd_feedback"),
+            InlineKeyboardButton("\U0001f5d1 Delete my data", callback_data="cmd_delete"),
         ],
     ])
 
@@ -112,7 +113,8 @@ async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             "\u23f8 *Pause* / \u25b6\ufe0f *Resume* — Pause or resume tracking\n"
             "\U0001f511 *Keywords* — Filter postings by keywords\n"
             "\U0001f4bc *All Jobs* — View all current job postings\n"
-            "\U0001f4ac *Feedback* — Send feedback to the developer\n\n"
+            "\U0001f4ac *Feedback* — Send feedback to the developer\n"
+            "\U0001f5d1 *Delete my data* — Remove all your data\n\n"
             "Let's get started\! Tap *Add* to track your first company\\.",
             parse_mode="MarkdownV2",
             reply_markup=_main_keyboard(),
@@ -345,6 +347,42 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             )
         else:
             await query.message.reply_text("No company selected.")
+
+    elif cmd == "cmd_delete":
+        buttons = [
+            [
+                InlineKeyboardButton("\u2757 Yes, delete everything", callback_data="confirm_delete"),
+                InlineKeyboardButton("\u274c Cancel", callback_data="cancel_delete"),
+            ]
+        ]
+        await query.message.reply_text(
+            "\u26a0\ufe0f *Delete all your data?*\n\n"
+            "This will permanently remove:\n"
+            "\u2022 All your tracked companies\n"
+            "\u2022 All stored job data\n"
+            "\u2022 Your notification settings\n"
+            "\u2022 Your account\n\n"
+            "This action *cannot be undone*.",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup(buttons),
+        )
+    elif cmd == "confirm_delete":
+        from src.scheduler import scheduler as _scheduler
+        # Remove scheduled job
+        job_id = f"check_{chat_id}"
+        if _scheduler.get_job(job_id):
+            _scheduler.remove_job(job_id)
+        # Delete all user data from DB
+        database.delete_user(chat_id)
+        await query.message.reply_text(
+            "\u2705 All your data has been deleted.\n\n"
+            "Send /start if you ever want to use JobWatch again.",
+        )
+    elif cmd == "cancel_delete":
+        await query.message.reply_text(
+            "Deletion cancelled.",
+            reply_markup=_main_keyboard(),
+        )
 
     elif cmd == "cmd_feedback":
         context.user_data["awaiting_feedback"] = True

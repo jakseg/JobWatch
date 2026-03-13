@@ -143,6 +143,16 @@ def add_company(chat_id: int, name: str, url: str, keywords: list[str]) -> int:
         conn.close()
 
 
+def delete_user(chat_id: int) -> None:
+    """Delete a user and all their data (companies, state) via CASCADE."""
+    conn = get_connection()
+    try:
+        conn.execute("DELETE FROM users WHERE chat_id = ?", (chat_id,))
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def remove_company(chat_id: int, company_id: int) -> bool:
     conn = get_connection()
     try:

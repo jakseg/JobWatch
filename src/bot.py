@@ -103,7 +103,7 @@ def main() -> None:
     # General button handler (after conversation handler so cmd_add is handled there)
     app.add_handler(CallbackQueryHandler(
         button_callback,
-        pattern=r"^(cmd_|jobs_|rm_|pause_|resume_|kw_|time_)",
+        pattern=r"^(cmd_|jobs_|rm_|pause_|resume_|kw_|time_|confirm_delete|cancel_delete)",
     ))
 
     # Free-text handler for keyword editing (group 1 = lower priority, won't block add conversation)
