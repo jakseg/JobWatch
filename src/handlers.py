@@ -488,6 +488,7 @@ async def list_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 # --- /add (conversation: NAME → URL → KEYWORDS) ---
 
 async def add_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    database.get_or_create_user(update.effective_chat.id)
     await update.message.reply_text("What's the company name?")
     return NAME
 
@@ -495,6 +496,7 @@ async def add_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 async def add_start_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
     await query.answer()
+    database.get_or_create_user(update.effective_chat.id)
     await query.message.reply_text("What's the company name?")
     return NAME
 
@@ -618,6 +620,7 @@ async def add_keywords(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     try:
         database.add_company(chat_id, name, url, keywords)
     except Exception:
+        logger.exception("add_company failed for chat_id=%s url=%s", chat_id, url)
         await update.message.reply_text("This URL is already in your list.")
         return ConversationHandler.END
 
