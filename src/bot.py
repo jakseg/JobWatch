@@ -3,10 +3,12 @@
 import logging
 import os
 
+from telegram import Update
 from telegram.ext import (
     Application,
     CallbackQueryHandler,
     CommandHandler,
+    ContextTypes,
     ConversationHandler,
     MessageHandler,
     filters,
@@ -109,6 +111,20 @@ def main() -> None:
 
     # Free-text handler for keyword editing (group 1 = lower priority, won't block add conversation)
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, freetext_handler), group=1)
+
+    async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+        logging.getLogger(__name__).exception(
+            "Unhandled exception while processing update", exc_info=context.error
+        )
+        if isinstance(update, Update) and update.effective_message:
+            try:
+                await update.effective_message.reply_text(
+                    "Something went wrong. Try again, or use /cancel to reset."
+                )
+            except Exception:
+                pass
+
+    app.add_error_handler(error_handler)
 
     # Lifecycle hooks
     async def post_init(application: Application) -> None:

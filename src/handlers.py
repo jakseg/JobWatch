@@ -313,8 +313,26 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 "Which company's keywords to change?",
                 reply_markup=InlineKeyboardMarkup(buttons),
             )
+    elif cmd == "kw_clear":
+        company_id = context.user_data.get("kw_company_id")
+        company_name = context.user_data.get("kw_company_name", "Unknown")
+        if company_id:
+            database.update_keywords(company_id, [])
+            context.user_data.pop("kw_company_id", None)
+            context.user_data.pop("kw_company_name", None)
+            await query.message.reply_text(
+                f"\u2705 Keywords cleared for *{_escape_md(company_name)}* — tracking all changes.",
+                parse_mode="Markdown",
+                reply_markup=_main_keyboard(),
+            )
+        else:
+            await query.message.reply_text("No company selected.")
     elif cmd.startswith("kw_"):
-        company_id = int(cmd.replace("kw_", ""))
+        try:
+            company_id = int(cmd.replace("kw_", ""))
+        except ValueError:
+            await query.message.reply_text("Invalid selection.")
+            return
         companies = database.list_companies(chat_id)
         target = next((c for c in companies if c["id"] == company_id), None)
         if target:
@@ -333,20 +351,6 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             )
         else:
             await query.message.reply_text("Company not found.")
-    elif cmd == "kw_clear":
-        company_id = context.user_data.get("kw_company_id")
-        company_name = context.user_data.get("kw_company_name", "Unknown")
-        if company_id:
-            database.update_keywords(company_id, [])
-            context.user_data.pop("kw_company_id", None)
-            context.user_data.pop("kw_company_name", None)
-            await query.message.reply_text(
-                f"\u2705 Keywords cleared for *{_escape_md(company_name)}* — tracking all changes.",
-                parse_mode="Markdown",
-                reply_markup=_main_keyboard(),
-            )
-        else:
-            await query.message.reply_text("No company selected.")
 
     elif cmd == "cmd_delete":
         buttons = [
@@ -487,8 +491,14 @@ async def list_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 # --- /add (conversation: NAME → URL → KEYWORDS) ---
 
+def _clear_modal_state(context: ContextTypes.DEFAULT_TYPE) -> None:
+    for key in ("awaiting_feedback", "kw_company_id", "kw_company_name", "search_results"):
+        context.user_data.pop(key, None)
+
+
 async def add_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     database.get_or_create_user(update.effective_chat.id)
+    _clear_modal_state(context)
     await update.message.reply_text("What's the company name?")
     return NAME
 
@@ -497,6 +507,7 @@ async def add_start_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     query = update.callback_query
     await query.answer()
     database.get_or_create_user(update.effective_chat.id)
+    _clear_modal_state(context)
     await query.message.reply_text("What's the company name?")
     return NAME
 
@@ -535,7 +546,10 @@ async def add_url(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 async def add_location(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     text = update.message.text.strip()
     location = None if text == "/skip" else text
-    name = context.user_data["new_name"]
+    name = context.user_data.get("new_name")
+    if not name:
+        await update.message.reply_text("Lost conversation state — please start over with /add.")
+        return ConversationHandler.END
 
     await update.message.reply_text("\U0001f50d Searching career pages...")
     results = await search_career_pages(name, location)
@@ -614,8 +628,12 @@ async def add_keywords(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     keywords = [] if text == "/skip" else [k.strip() for k in text.split(",") if k.strip()]
 
     chat_id = update.effective_chat.id
-    name = context.user_data.pop("new_name")
-    url = context.user_data.pop("new_url")
+    name = context.user_data.pop("new_name", None)
+    url = context.user_data.pop("new_url", None)
+
+    if not name or not url:
+        await update.message.reply_text("Lost conversation state — please start over with /add.")
+        return ConversationHandler.END
 
     try:
         database.add_company(chat_id, name, url, keywords)
